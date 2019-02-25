@@ -1,0 +1,51 @@
+import requests
+import csv
+from bs4 import BeautifulSoup
+import pandas as pd
+
+#爬取所有保险公司的URL，存储至df。
+#df数据结构说明：company(保险公司名称)，url(保险公司产品列表地址)
+url_complist='http://bxjg.circ.gov.cn/tabid/5253/ctl/ViewOrgList/mid/16658/OrgTypeID/1/Default.aspx?ctlmode=none'
+#proxies={'http':'10.37.84.37:8080'}
+headers = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.62 Safari/537.36'}
+r_complist=requests.get(url_complist,headers=headers)#proxies=proxies,
+bsObj=BeautifulSoup(r_complist.text,'html.parser')
+df=pd.DataFrame(columns=['company','url'])
+for a in bsObj.findAll('a'):
+    if a.get('href'):
+        new=pd.DataFrame({'company':[a.getText()],'url':[a.get('href')]},index=['0'])
+        df=df.append(new,ignore_index=True)
+
+def save_ins(url,company,product_df):
+#输入：
+#url:某保险公司的保险产品列表的地址
+#company:某保险公司名称
+#product_df:保险产品存储的dataframe
+#输出：
+#product_df数据结构说明：company(保险公司名称)/
+    headers = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.62 Safari/537.36'}
+    r=requests.get(url,headers=headers)
+    bsObj=BeautifulSoup(r.text,'html.parser')
+    table=bsObj.find('table',{'class':"tableRecordProduct"})
+    content=table.findAll('tr')
+    for i in range(1,len(content)):
+        findlines=content[i].findAll('td')
+        row=pd.Series({'company':company,'product':findlines[0].getText().strip(), 'date':findlines[1].getText().strip(), 'type':findlines[2].getText().strip()})
+        product_df=product_df.append(row,ignore_index=True)
+    return product_df
+
+#新建product_df存储保险产品
+product_df=pd.DataFrame(columns=['company','product','date','type'])
+#逐个保险公司爬取，输出结果存储在product_df中
+for i in range(len(df)):
+    company=df.iloc[i]['company']
+    print(company)
+    url='http://bxjg.circ.gov.cn'+df.iloc[i]['url']
+    try:
+        product_df=save_ins(url,company,product_df)
+        print('Success!')
+    except:
+        print('Fail!')
+
+#导出保险产品列表至CSV，总共25346条数据（截至2019年2月21日）
+product_df.to_csv('product.csv')
